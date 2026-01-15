@@ -1,5 +1,7 @@
 # 🚐 É de Maceió - Sistema de Turismo e Receptivo
 
+> ⚠️ **Aviso de Propriedade:** Este é um software proprietário desenvolvido para uso exclusivo da agência **É de Maceió Turismo**. O código está aberto neste repositório apenas para fins de **Portfólio Pessoal** e estudo. A cópia ou uso comercial por terceiros é proibida.
+
 Sistema web desenvolvido para gestão de agência de turismo, permitindo o cadastro de passeios, exibição de catálogo, otimização para SEO e integração com WhatsApp para vendas.
 
 ## 🚀 Tecnologias Utilizadas
