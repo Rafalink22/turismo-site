@@ -1,0 +1,14 @@
+# Ignorar arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# Ignorar configurações locais (SENHAS!)
+config/database.php
+
+# Ignorar uploads pesados (mas manter a pasta)
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Ignorar dependências (caso use composer no futuro)
+vendor/
+node_modules/
