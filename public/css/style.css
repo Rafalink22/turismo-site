@@ -1,0 +1,186 @@
+/* =========================================
+   Variaveis Globais e Resets
+   ========================================= */
+:root {
+    --cor-primaria: #0d6efd;
+    --cor-secundaria: #6c757d;
+    --cor-marine: #12263bff; /* Sua cor personalizada */
+    --cor-zap: #25D366;
+    --cor-zap-hover: #128C7E;
+    --cor-warning: #ffc107;
+}
+
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* =========================================
+   Navbar & Identidade
+   ========================================= */
+.bg-navbar-marine {
+    background-color: var(--cor-marine);
+}
+
+.logo-empresa {
+    height: 60px;
+    width: auto;
+    display: flex;
+    align-items: center;
+}
+
+.logo-empresa img {
+    max-height: 100%;
+    width: auto;
+    margin-right: 15px;
+}
+
+/* =========================================
+   Hero Section (Banner Principal)
+   ========================================= */
+.hero-section {
+    background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('../../models/img/van-banner.jpg') no-repeat center center;
+    background-size: cover;
+    background-position: center;
+    color: white;
+    padding: 100px 0;
+    text-align: center;
+}
+
+/* =========================================
+   Cards de Passeios
+   ========================================= */
+.card {
+    border: none;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 1rem 3rem rgba(0,0,0,.175) !important;
+}
+
+/* Define tamanho padrão para imagens dos cards */
+.card-img-top {
+    width: 100%;
+    height: 330px; 
+    object-fit: cover;
+}
+
+/* Faz o card ser clicável mantendo botões funcionais */
+.card-action-layer {
+    position: relative;
+    z-index: 2;
+}
+
+/* =========================================
+   Botões Específicos
+   ========================================= */
+.whatsapp-btn {
+    background-color: var(--cor-zap);
+    color: white;
+    border: none;
+    transition: all 0.3s;
+}
+
+.whatsapp-btn:hover {
+    background-color: var(--cor-zap-hover);
+    color: white;
+    transform: scale(1.05);
+}
+
+/* Botão Flutuante de Admin (Lápis) */
+.admin-edit-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: transform 0.2s;
+    text-decoration: none;
+    color: var(--cor-warning);
+}
+
+.admin-edit-btn:hover {
+    transform: scale(1.1);
+    background-color: var(--cor-warning);
+    color: black;
+}
+
+/* =========================================
+   Carrossel (Detalhes)
+   ========================================= */
+.carousel-custom-height {
+    height: 500px;
+}
+
+.carousel-custom-height img {
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Ícones de navegação do carrossel mais visíveis */
+.carousel-control-icon-bg {
+    background-color: rgba(0,0,0,0.5);
+    border-radius: 50%;
+    padding: 20px;
+    background-size: 50% 50%;
+}
+
+/* =========================================
+   Rodapé (Footer)
+   ========================================= */
+.footer-link {
+    color: #adb5bd;
+    text-decoration: none;
+    transition: color 0.3s ease, padding-left 0.3s ease;
+}
+
+.footer-link:hover {
+    color: #fff;
+    padding-left: 5px;
+}
+
+.social-icon {
+    font-size: 1.5rem;
+    margin-right: 15px;
+    color: #fff;
+    transition: transform 0.3s, color 0.3s;
+}
+
+.social-icon:hover {
+    transform: translateY(-3px);
+    color: var(--cor-zap);
+}
+
+/* =========================================
+   Estilos Específicos da Página de Detalhes
+   ========================================= */
+
+/* Define a altura fixa do carrossel */
+.carousel-custom-height {
+    height: 500px;
+    width: 100%;
+    background-color: #eee; /* Cor de fundo enquanto carrega */
+}
+
+/* A mágica da imagem */
+.carousel-custom-height img {
+    width: 100%;
+    height: 100%;       /* Força a imagem a ocupar toda a altura da div pai */
+    object-fit: cover;  /* Corta as bordas excedentes sem distorcer a imagem */
+    object-position: center; /* Garante que o centro da foto apareça */
+}
+
+/* Responsividade: No celular, diminuímos a altura para não ocupar a tela toda */
+@media (max-width: 768px) {
+    .carousel-custom-height {
+        height: 300px;
+    }
+}

@@ -1,0 +1,13 @@
+RewriteEngine On
+
+# 1. Se o usuário digitar /arquivo.php, redireciona para /arquivo (para não duplicar conteúdo SEO)
+RewriteCond %{THE_REQUEST} \s/+(.+?)\.php[\s?] [NC]
+RewriteRule ^ /%1 [R=301,L,NE]
+
+# 2. Se o usuário digitar /arquivo (sem extensão), o servidor roda o arquivo.php internamente
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.+?)/?$ $1.php [L]
+
+# 3. Proteção básica: Bloqueia listagem de diretórios (ninguém vê seus arquivos soltos)
+Options -Indexes

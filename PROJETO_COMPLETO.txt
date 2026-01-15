@@ -1,0 +1,2051 @@
+================================================================================
+ESTRUTURA DE DIRETÓRIOS
+================================================================================
+Raiz: C:\xampp\htdocs\edemaceio
+
+├── config/
+│   └── database.php
+├── controllers/
+├── models/
+├── public/
+│   ├── admin/
+│   │   ├── configuracoes.php
+│   │   ├── criar-passeio.php
+│   │   ├── dashboard.php
+│   │   ├── deletar-passeio.php
+│   │   ├── editar-passeio.php
+│   │   └── galeria.php
+│   ├── css/
+│   │   └── style.css
+│   ├── js/
+│   │   └── main.js
+│   ├── auth.php
+│   ├── detalhes.php
+│   ├── index.php
+│   ├── login.php
+│   ├── logout.php
+│   ├── reset_senha.php
+│   └── sobre.php
+├── views/
+│   ├── admin/
+│   │   ├── configuracoes.php
+│   │   ├── criar-passeio.php
+│   │   ├── dashboard.php
+│   │   ├── editar-passeio.php
+│   │   └── login.php
+│   ├── partials/
+│   │   ├── footer.php
+│   │   └── header.php
+│   └── site/
+│       └── detalhes.php
+├── .htaccess
+
+
+================================================================================
+CONTEÚDO DOS ARQUIVOS
+================================================================================
+
+--- INICIO ARQUIVO: .htaccess ---
+RewriteEngine On
+
+# 1. Se o usuário digitar /arquivo.php, redireciona para /arquivo (para não duplicar conteúdo SEO)
+RewriteCond %{THE_REQUEST} \s/+(.+?)\.php[\s?] [NC]
+RewriteRule ^ /%1 [R=301,L,NE]
+
+# 2. Se o usuário digitar /arquivo (sem extensão), o servidor roda o arquivo.php internamente
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.+?)/?$ $1.php [L]
+
+# 3. Proteção básica: Bloqueia listagem de diretórios (ninguém vê seus arquivos soltos)
+Options -Indexes
+--- FIM ARQUIVO: .htaccess ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: config\database.php ---
+<?php
+
+/*
+ * Configuração da Conexão com o Banco de Dados
+ * Usando PDO (PHP Data Objects)
+ */
+
+$host = 'localhost';
+$db   = 'turismo_db';
+$user = 'root';      // Usuário padrão do XAMPP
+$pass = '';          // Senha padrão do XAMPP (vazia)
+$charset = 'utf8mb4';
+
+// DSN (Data Source Name) - A string que identifica o banco
+$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+
+// Opções do PDO para garantir performance e tratamento de erros
+$options = [
+    // Lança exceções em caso de erro (vital para debug)
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+    // Retorna os dados como array associativo (['nome' => 'Bruno'] em vez de índice [0])
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    // Usa prepared statements nativos do banco (mais seguro)
+    PDO::ATTR_EMULATE_PREPARES   => false,
+];
+
+try {
+    // Tentativa de conexão
+    $pdo = new PDO($dsn, $user, $pass, $options);
+    
+    // Se quiser testar, descomente a linha abaixo e acesse o arquivo no navegador
+    // echo "Conexão realizada com sucesso!"; 
+    
+} catch (\PDOException $e) {
+    // Se der erro, captura a exceção e mostra a mensagem (em produção, logaríamos isso)
+    throw new \PDOException($e->getMessage(), (int)$e->getCode());
+}
+
+// --- CARREGAR CONFIGURAÇÕES GERAIS ---
+// Como isso roda em todas as páginas, otimizamos com try/catch silencioso
+try {
+    $stmtConfig = $pdo->query("SELECT * FROM site_config WHERE id = 1 LIMIT 1");
+    $siteConfig = $stmtConfig->fetch(PDO::FETCH_ASSOC);
+
+    // Valores padrão caso o banco falhe ou esteja vazio
+    if (!$siteConfig) {
+        $siteConfig = [
+            'nome_site' => 'É De Maceió - Turismos',
+            'whatsapp' => '82933004541',
+            'instagram' => 'https://www.instagram.com/edemaceioturismo?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==',
+            'facebook' => 'https://www.instagram.com/edemaceioturismo?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==',
+            'email_contato' => 'brunonrafan@gmail.com',
+            'endereco' => 'Brasil'
+        ];
+    }
+} catch (Exception $e) {
+    // Falha silenciosa para não travar o site se a tabela não existir ainda
+}
+?>
+--- FIM ARQUIVO: config\database.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\auth.php ---
+<?php
+session_start();
+require_once __DIR__ . '/../config/database.php';
+
+// Verifica se os dados chegaram via POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    // Sanitização básica (embora Prepared Statements já resolvam SQL Injection)
+    $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
+    $senha = $_POST['senha']; // Senha não se sanitiza, pois pode ter caracteres especiais
+
+    try {
+        // 1. Buscar o usuário pelo email
+        $stmt = $pdo->prepare("SELECT id, nome, senha FROM admins WHERE email = :email");
+        $stmt->bindValue(':email', $email);
+        $stmt->execute();
+        $user = $stmt->fetch();
+
+        // 2. Verificar se o usuário existe E se a senha bate com o hash
+        if ($user && password_verify($senha, $user['senha'])) {
+            
+            // SEGURANÇA: Regenerar o ID da sessão para evitar roubo de sessão
+            session_regenerate_id(true);
+
+            // Armazenar dados na sessão (apenas o necessário)
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['user_nome'] = $user['nome'];
+            $_SESSION['logado'] = true;
+
+            // Redirecionar para o Dashboard (que criaremos a seguir)
+            header("Location: admin/dashboard.php");
+            exit;
+
+        } else {
+            // Falha: Redireciona de volta com erro (sem dizer se foi senha ou email)
+            header("Location: login.php?erro=1");
+            exit;
+        }
+
+    } catch (PDOException $e) {
+        // Em produção, logaríamos o erro em arquivo
+        die("Erro no servidor.");
+    }
+} else {
+    // Se tentar acessar o arquivo direto sem POST, joga para o login
+    header("Location: login.php");
+    exit;
+}
+?>
+--- FIM ARQUIVO: public\auth.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\detalhes.php ---
+<?php
+require_once __DIR__ . '/../config/database.php';
+
+// 1. Validação de Segurança
+if (!isset($_GET['id']) || empty($_GET['id'])) {
+    header("Location: index"); // Redireciona para index (sem .php)
+    exit;
+}
+
+$id = (int)$_GET['id'];
+
+try {
+    // 2. Busca os dados
+    $stmt = $pdo->prepare("SELECT * FROM passeios WHERE id = :id AND ativo = 1");
+    $stmt->execute([':id' => $id]);
+    $passeio = $stmt->fetch();
+
+    if (!$passeio) {
+        die("Passeio não encontrado ou inativo.");
+    }
+
+    // 3. Busca a Galeria
+    $stmt = $pdo->prepare("SELECT imagem FROM fotos_passeio WHERE passeio_id = :id");
+    $stmt->execute([':id' => $id]);
+    $galeria = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+} catch (PDOException $e) {
+    die("Erro no banco de dados.");
+}
+
+// --- PREPARAÇÃO DO SEO (NOVO) ---
+$seoTitle = $passeio['titulo'] . " - É de Maceió Turismo";
+
+// Pega os primeiros 140 caracteres da descrição e remove tags HTML
+$seoDesc = substr(strip_tags($passeio['descricao']), 0, 140) . "...";
+
+// Monta a URL da imagem. Se tiver foto, usa ela. Se não, usa a logo.
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
+$host = $_SERVER['HTTP_HOST'];
+$baseImg = "/edemaceio/public/uploads/"; // Ajuste conforme sua pasta real
+
+if ($passeio['imagem']) {
+    $seoImage = $protocol . "://" . $host . $baseImg . $passeio['imagem'];
+}
+
+// Carrega a View
+require_once __DIR__ . '/../views/site/detalhes.php';
+?>
+--- FIM ARQUIVO: public\detalhes.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\index.php ---
+<?php
+// 1. Inicia sessão (necessário para verificar se é admin)
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+require_once __DIR__ . '/../config/database.php';
+
+// --- CONFIGURAÇÃO DA PAGINAÇÃO ---
+$itensPorPagina = 6; // Quantos cards aparecem por vez
+// Valida se a página é um número inteiro, senão assume 1
+$paginaAtual = filter_input(INPUT_GET, 'pagina', FILTER_VALIDATE_INT) ?? 1;
+// Calcula onde começa a busca no banco (Página 1 começa no 0, Página 2 no 6...)
+$offset = ($paginaAtual - 1) * $itensPorPagina;
+
+// --- FILTRO DE BUSCA ---
+$busca = filter_input(INPUT_GET, 'busca', FILTER_SANITIZE_SPECIAL_CHARS);
+
+try {
+    // =================================================================
+    // PASSO 1: Descobrir o TOTAL de registros (para a paginação funcionar)
+    // =================================================================
+    if ($busca) {
+        // Correção do Erro HY093: Usamos :busca1 e :busca2 porque não podemos 
+        // repetir o mesmo nome de parâmetro quando PDO::ATTR_EMULATE_PREPARES é false.
+        $sqlCount = "SELECT COUNT(*) FROM passeios WHERE ativo = 1 AND (titulo LIKE :busca1 OR descricao LIKE :busca2)";
+        $stmtCount = $pdo->prepare($sqlCount);
+        $stmtCount->bindValue(':busca1', '%' . $busca . '%');
+        $stmtCount->bindValue(':busca2', '%' . $busca . '%');
+    } else {
+        $sqlCount = "SELECT COUNT(*) FROM passeios WHERE ativo = 1";
+        $stmtCount = $pdo->prepare($sqlCount);
+    }
+    
+    $stmtCount->execute();
+    $totalPasseios = $stmtCount->fetchColumn();
+    
+    // Calcula quantas páginas teremos (arredonda para cima)
+    $totalPaginas = ceil($totalPasseios / $itensPorPagina); 
+
+    // =================================================================
+    // PASSO 2: Buscar os itens da página atual
+    // =================================================================
+    if ($busca) {
+        // Query de Busca com Paginação
+        $sql = "SELECT * FROM passeios 
+                WHERE ativo = 1 AND (titulo LIKE :busca1 OR descricao LIKE :busca2) 
+                ORDER BY id DESC 
+                LIMIT :limite OFFSET :offset";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':busca1', '%' . $busca . '%');
+        $stmt->bindValue(':busca2', '%' . $busca . '%');
+    } else {
+        // Query Padrão com Paginação
+        $sql = "SELECT * FROM passeios 
+                WHERE ativo = 1 
+                ORDER BY id DESC 
+                LIMIT :limite OFFSET :offset";
+        
+        // CORREÇÃO: Removemos o $pdo->query() que causava erro aqui
+        $stmt = $pdo->prepare($sql);
+    }
+
+    // Bind dos parâmetros de paginação (Obrigatório passar como INTEIRO)
+    $stmt->bindValue(':limite', $itensPorPagina, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    
+    $stmt->execute();
+    $passeios = $stmt->fetchAll();
+    
+    // Define o título da página para o Header
+    $tituloPagina = $busca ? "Busca: " . $busca : "Home - Melhores Destinos";
+
+} catch (PDOException $e) {
+    // Em produção, não mostramos o erro técnico ($e->getMessage()) para o usuário
+    die("Erro ao carregar os passeios. Por favor, tente novamente.");
+}
+
+// Carrega o cabeçalho HTML
+require_once __DIR__ . '/../views/partials/header.php';
+?>
+
+<header class="hero-section">
+    <div class="container">
+        <h1 class="display-4 fw-bold">Descubra lugares incríveis</h1>
+        <p class="lead mb-4">Conforto, segurança e as melhores rotas para sua viagem.</p>
+        
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <form action="index" method="GET" class="d-flex shadow-sm rounded-pill overflow-hidden bg-white">
+                    <input type="text" name="busca" class="form-control border-0 py-3 ps-4" 
+                           placeholder="Para onde você quer ir? (Ex: Maragogi)" 
+                           value="<?= isset($_GET['busca']) ? htmlspecialchars($_GET['busca']) : '' ?>"
+                           style="box-shadow: none;"> 
+                    <button type="submit" class="btn btn-primary px-4 fw-bold rounded-0">
+                        <i class="bi bi-search"></i> Buscar
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+    </div>
+</header>
+
+<main class="container my-5" id="passeios">
+    <h2 class="text-center mb-4">Nossos Passeios</h2>
+    
+    <div class="row">
+        <?php if (count($passeios) > 0): ?>
+            <?php foreach ($passeios as $passeio): ?>
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 shadow-sm position-relative">
+                        
+                        <?php if (isset($_SESSION['logado']) && $_SESSION['logado'] === true): ?>
+                            <a href="admin/editar-passeio.php?id=<?= $passeio['id'] ?>" class="admin-edit-btn text-warning" title="Editar este passeio">
+                                <i class="bi bi-pencil-fill fs-5"></i>
+                            </a>
+                        <?php endif; ?>
+
+                        <?php 
+                            $imgSrc = $passeio['imagem'] ? 'uploads/' . $passeio['imagem'] : 'https://placehold.co/600x400?text=Sem+Foto';
+                        ?>
+                        <img src="<?= htmlspecialchars($imgSrc) ?>" class="card-img-top" alt="<?= htmlspecialchars($passeio['titulo']) ?>">
+                        
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title">
+                                <a href="detalhes?id=<?= $passeio['id'] ?>" class="text-decoration-none text-dark stretched-link">
+                                    <?= htmlspecialchars($passeio['titulo']) ?>
+                                </a>
+                            </h5>
+                            
+                            <p class="card-text flex-grow-1 text-muted">
+                                <?= htmlspecialchars(substr($passeio['descricao'], 0, 100)) ?>...
+                            </p>
+                            
+                            <h4 class="text-primary mb-3">
+                                R$ <?= number_format($passeio['preco'], 2, ',', '.') ?>
+                            </h4>
+                            
+                            <?php 
+                                $msg = "Olá! Vi o passeio *" . $passeio['titulo'] . "* no site e gostaria de mais informações.";
+                                $linkZap = "https://wa.me/5582999999999?text=" . urlencode($msg);
+                            ?>
+                            
+                            <a href="<?= $linkZap ?>" target="_blank" class="btn whatsapp-btn w-100" style="position: relative; z-index: 2;">
+                                <i class="bi bi-whatsapp"></i> Reservar Agora
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php else: ?>
+            
+            <div class="col-12 text-center py-5">
+                <i class="bi bi-geo-alt fs-1 text-muted mb-3 d-block"></i>
+                
+                <?php if ($busca): ?>
+                    <h3>Ops! Não encontramos nada para "<?= htmlspecialchars($busca) ?>"</h3>
+                    <p class="text-muted">Tente buscar por outro termo ou veja todos os nossos roteiros.</p>
+                    <a href="index" class="btn btn-outline-primary mt-2">Limpar Busca</a>
+                <?php else: ?>
+                    <h3>Nenhum passeio cadastrado ainda.</h3>
+                    <p class="text-muted">Em breve novidades incríveis por aqui!</p>
+                <?php endif; ?>
+            
+            </div>
+
+        <?php endif; ?>
+    </div>
+
+    <?php if ($totalPaginas > 1): ?>
+    <nav aria-label="Navegação de páginas" class="mt-5">
+        <ul class="pagination justify-content-center">
+            
+            <li class="page-item <?= ($paginaAtual <= 1) ? 'disabled' : '' ?>">
+                <a class="page-link" href="?pagina=<?= $paginaAtual - 1 ?><?= $busca ? '&busca='.$busca : '' ?>">
+                    <i class="bi bi-chevron-left"></i>
+                </a>
+            </li>
+
+            <?php for ($i = 1; $i <= $totalPaginas; $i++): ?>
+                <li class="page-item <?= ($paginaAtual == $i) ? 'active' : '' ?>">
+                    <a class="page-link" href="?pagina=<?= $i ?><?= $busca ? '&busca='.$busca : '' ?>">
+                        <?= $i ?>
+                    </a>
+                </li>
+            <?php endfor; ?>
+
+            <li class="page-item <?= ($paginaAtual >= $totalPaginas) ? 'disabled' : '' ?>">
+                <a class="page-link" href="?pagina=<?= $paginaAtual + 1 ?><?= $busca ? '&busca='.$busca : '' ?>">
+                    <i class="bi bi-chevron-right"></i>
+                </a>
+            </li>
+            
+        </ul>
+    </nav>
+    <?php endif; ?>
+</main>
+
+<?php 
+// 3. Incluo o rodapé
+require_once __DIR__ . '/../views/partials/footer.php'; 
+?>
+--- FIM ARQUIVO: public\index.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\login.php ---
+<?php
+// Apenas carrega a visualização
+// Como o usuário acessa localhost/.../public/login.php, voltamos um nível para achar a view
+require_once __DIR__ . '/../views/admin/login.php';
+?>
+--- FIM ARQUIVO: public\login.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\logout.php ---
+<?php
+session_start();
+session_destroy(); // Destrói todas as variáveis de sessão
+header("Location: login.php");
+exit;
+?>
+--- FIM ARQUIVO: public\logout.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\reset_senha.php ---
+<?php
+// Arquivo: /public/reset_senha.php
+require_once __DIR__ . '/../config/database.php';
+
+$email = 'admin@agencia.com';
+$nova_senha = '123456';
+
+// 1. Gera o hash usando o algoritmo padrão do seu PHP atual
+$novo_hash = password_hash($nova_senha, PASSWORD_DEFAULT);
+
+try {
+    // 2. Atualiza no banco
+    $stmt = $pdo->prepare("UPDATE admins SET senha = :senha WHERE email = :email");
+    $stmt->bindValue(':senha', $novo_hash);
+    $stmt->bindValue(':email', $email);
+    $stmt->execute();
+
+    echo "<h1>Sucesso!</h1>";
+    echo "Senha redefinida.<br>";
+    echo "<b>Email:</b> $email<br>";
+    echo "<b>Nova Senha:</b> $nova_senha<br>";
+    echo "<b>Novo Hash Gerado:</b> $novo_hash<br><br>";
+    echo "<a href='login.php'>Clique aqui para logar</a>";
+
+} catch (PDOException $e) {
+    echo "Erro: " . $e->getMessage();
+}
+?>
+--- FIM ARQUIVO: public\reset_senha.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\sobre.php ---
+<?php
+$tituloPagina = "Sobre Nós - Nossa História";
+require_once __DIR__ . '/../views/partials/header.php';
+?>
+
+<div class="container my-5">
+    <div class="row align-items-center">
+        <div class="col-md-6">
+            <h2 class="fw-bold display-5 mb-4">Mais que transporte, <br>uma experiência.</h2>
+            <p class="lead text-muted">
+                Fundada com a paixão por apresentar as belezas da nossa região... Somos conhecidos por proporcionar as melhores experiências em nossos passeios, venha prestigiar o conforto e qualidade de nossos serviços!
+            </p>
+             </div>
+        <div class="col-md-6">
+             <img src="../models/img/van.jpg" alt="Nossa Equipe" class="van-image">
+        </div>
+    </div>
+</div>
+
+<?php 
+require_once __DIR__ . '/../views/partials/footer.php'; 
+?>
+--- FIM ARQUIVO: public\sobre.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\admin\configuracoes.php ---
+<?php
+session_start();
+require_once __DIR__ . '/../../config/database.php';
+
+// 1. Segurança
+if (!isset($_SESSION['logado'])) {
+    header("Location: ../login.php");
+    exit;
+}
+
+// 2. Processar Atualização (POST)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $sql = "UPDATE site_config SET 
+                nome_site = :nome,
+                whatsapp = :zap,
+                instagram = :insta,
+                facebook = :face,
+                email_contato = :email,
+                endereco = :end
+                WHERE id = 1"; // Sempre atualiza o ID 1
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':nome', $_POST['nome_site']);
+        // Remove caracteres não numéricos do zap para salvar limpo
+        $zapLimpo = preg_replace('/[^0-9]/', '', $_POST['whatsapp']);
+        $stmt->bindValue(':zap', $zapLimpo);
+        
+        $stmt->bindValue(':insta', $_POST['instagram']);
+        $stmt->bindValue(':face', $_POST['facebook']);
+        $stmt->bindValue(':email', $_POST['email_contato']);
+        $stmt->bindValue(':end', $_POST['endereco']);
+        $stmt->execute();
+
+        $msg = "Configurações atualizadas com sucesso!";
+        
+    } catch (PDOException $e) {
+        $erro = "Erro ao atualizar: " . $e->getMessage();
+    }
+}
+
+// 3. Buscar Configurações Atuais
+$stmt = $pdo->query("SELECT * FROM site_config WHERE id = 1");
+$config = $stmt->fetch();
+?>
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Configurações do Site</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+</head>
+<body class="bg-light">
+
+    <nav class="navbar navbar-dark bg-primary mb-4">
+        <div class="container">
+            <span class="navbar-brand"><i class="bi bi-gear"></i> Configurações Gerais</span>
+            <a href="dashboard.php" class="btn btn-sm btn-light text-primary fw-bold">Voltar ao Painel</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="card shadow-sm" style="max-width: 800px; margin: 0 auto;">
+            <div class="card-body">
+                
+                <?php if(isset($msg)): ?>
+                    <div class="alert alert-success"><?= $msg ?></div>
+                <?php endif; ?>
+
+                <form method="POST">
+                    <h5 class="mb-3 border-bottom pb-2">Informações Básicas</h5>
+                    <div class="mb-3">
+                        <label class="form-label">Nome do Site (SEO)</label>
+                        <input type="text" name="nome_site" class="form-control" value="<?= htmlspecialchars($config['nome_site']) ?>">
+                    </div>
+
+                    <h5 class="mb-3 border-bottom pb-2 mt-4">Contatos & Redes Sociais</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><i class="bi bi-whatsapp text-success"></i> WhatsApp (com DDD)</label>
+                            <input type="text" name="whatsapp" class="form-control" value="<?= htmlspecialchars($config['whatsapp']) ?>" placeholder="5582999...">
+                            <div class="form-text">Apenas números (Ex: 558299998888)</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><i class="bi bi-envelope"></i> E-mail de Contato</label>
+                            <input type="email" name="email_contato" class="form-control" value="<?= htmlspecialchars($config['email_contato']) ?>">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><i class="bi bi-instagram text-danger"></i> Link do Instagram</label>
+                            <input type="text" name="instagram" class="form-control" value="<?= htmlspecialchars($config['instagram']) ?>">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><i class="bi bi-facebook text-primary"></i> Link do Facebook</label>
+                            <input type="text" name="facebook" class="form-control" value="<?= htmlspecialchars($config['facebook']) ?>">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Endereço (Rodapé)</label>
+                        <textarea name="endereco" class="form-control" rows="2"><?= htmlspecialchars($config['endereco']) ?></textarea>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">Salvar Configurações</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
+--- FIM ARQUIVO: public\admin\configuracoes.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\admin\criar-passeio.php ---
+<?php
+session_start();
+require_once __DIR__ . '/../../config/database.php';
+
+// 1. Segurança
+if (!isset($_SESSION['logado'])) {
+    header("Location: ../login.php");
+    exit;
+}
+
+// 2. Processamento do Formulário (POST)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    $titulo = $_POST['titulo'];
+    $descricao = $_POST['descricao'];
+    $preco = $_POST['preco'];
+    
+    // Lógica de Upload de Imagem
+    $nomeImagem = null;
+    
+    // Verifica se veio arquivo e se não teve erro
+    if (isset($_FILES['imagem']) && $_FILES['imagem']['error'] === 0) {
+        
+        $extensao = pathinfo($_FILES['imagem']['name'], PATHINFO_EXTENSION);
+        // Geramos um nome único (time + random) para evitar arquivos com mesmo nome
+        $novoNome = uniqid() . "." . $extensao;
+        
+        $pastaDestino = __DIR__ . '/../../public/uploads/';
+        
+        // Cria a pasta se não existir
+        if (!is_dir($pastaDestino)) {
+            mkdir($pastaDestino, 0777, true);
+        }
+
+        // Move do temporário do PHP para nossa pasta
+        if (move_uploaded_file($_FILES['imagem']['tmp_name'], $pastaDestino . $novoNome)) {
+            $nomeImagem = $novoNome;
+        }
+    }
+
+    try {
+        // Inserção no Banco
+        $sql = "INSERT INTO passeios (titulo, descricao, preco, imagem, ativo) VALUES (:titulo, :descricao, :preco, :imagem, 1)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':titulo', $titulo);
+        $stmt->bindValue(':descricao', $descricao);
+        $stmt->bindValue(':preco', $preco);
+        $stmt->bindValue(':imagem', $nomeImagem);
+        $stmt->execute();
+
+        // Redireciona para o dashboard
+        header("Location: dashboard.php?sucesso=1");
+        exit;
+
+    } catch (PDOException $e) {
+        die("Erro ao salvar: " . $e->getMessage());
+    }
+}
+
+// 3. Se não for POST, carrega o formulário (View)
+require_once __DIR__ . '/../../views/admin/criar-passeio.php';
+?>
+--- FIM ARQUIVO: public\admin\criar-passeio.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\admin\dashboard.php ---
+<?php
+session_start();
+
+// Importa a conexão com o banco
+require_once __DIR__ . '/../../config/database.php';
+
+// 1. SEGURANÇA: Se não estiver logado, manda de volta para o login
+// Se a sessão não existir ou 'logado' não for true, bloqueia.
+if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true) {
+    header("Location: ../login.php?erro=2");
+    exit;
+}
+
+// 2. BUSCAR DADOS: Pega os passeios no banco para mostrar na tela
+try {
+    // Busca tudo ordenado pelo ID mais novo
+    $stmt = $pdo->query("SELECT * FROM passeios ORDER BY id DESC");
+    $passeios = $stmt->fetchAll();
+} catch (PDOException $e) {
+    // Se der erro no banco, definimos $passeios como array vazio para não quebrar o HTML
+    $passeios = []; 
+    // Em um sistema real, logaríamos o erro $e->getMessage()
+}
+
+// 3. CARREGAR A TELA: Chama o arquivo HTML da pasta views
+// As variáveis $passeios e $_SESSION estarão disponíveis dentro desse arquivo abaixo
+require_once __DIR__ . '/../../views/admin/dashboard.php';
+?>
+--- FIM ARQUIVO: public\admin\dashboard.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\admin\deletar-passeio.php ---
+<?php
+session_start();
+require_once __DIR__ . '/../../config/database.php';
+
+if (!isset($_SESSION['logado']) || !isset($_GET['id'])) {
+    header("Location: dashboard.php");
+    exit;
+}
+
+$id = $_GET['id'];
+
+try {
+    // Passo 1: Opcional - Buscar a imagem para deletar o arquivo físico
+    $stmt = $pdo->prepare("SELECT imagem FROM passeios WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    $p = $stmt->fetch();
+
+    if ($p && $p['imagem']) {
+        $caminhoArquivo = __DIR__ . '/../../public/uploads/' . $p['imagem'];
+        if (file_exists($caminhoArquivo)) {
+            unlink($caminhoArquivo); // Deleta o arquivo da pasta
+        }
+    }
+
+    // Passo 2: Deletar do Banco
+    $stmt = $pdo->prepare("DELETE FROM passeios WHERE id = :id");
+    $stmt->bindValue(':id', $id);
+    $stmt->execute();
+
+    header("Location: dashboard.php?msg=deletado");
+
+} catch (PDOException $e) {
+    die("Erro ao deletar.");
+}
+?>
+--- FIM ARQUIVO: public\admin\deletar-passeio.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\admin\editar-passeio.php ---
+<?php
+session_start();
+require_once __DIR__ . '/../../config/database.php';
+
+// 1. Segurança: Logado?
+if (!isset($_SESSION['logado'])) {
+    header("Location: ../login.php");
+    exit;
+}
+
+// Verifica se tem ID na URL (GET)
+if (!isset($_GET['id'])) {
+    header("Location: dashboard.php");
+    exit;
+}
+
+$id = $_GET['id'];
+
+// ---------------------------------------------------------
+// CENÁRIO A: Processar o Formulário (POST - Atualizar)
+// ---------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    $titulo = $_POST['titulo'];
+    $descricao = $_POST['descricao'];
+    $preco = $_POST['preco'];
+    // Checkbox html: se não estiver marcado, não envia nada. Precisamos forçar 0.
+    $ativo = isset($_POST['ativo']) ? 1 : 0; 
+
+    // Primeiro, buscamos a imagem atual no banco caso a gente precise mantê-la
+    $stmt = $pdo->prepare("SELECT imagem FROM passeios WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    $atual = $stmt->fetch();
+    
+    $nomeImagem = $atual['imagem']; // Por padrão, mantém a velha
+
+    // Se o usuário fez upload de uma NOVA imagem
+    if (isset($_FILES['imagem']) && $_FILES['imagem']['error'] === 0) {
+        $ext = pathinfo($_FILES['imagem']['name'], PATHINFO_EXTENSION);
+        $novoNome = uniqid() . "." . $ext;
+        $destino = __DIR__ . '/../../public/uploads/' . $novoNome;
+
+        if (move_uploaded_file($_FILES['imagem']['tmp_name'], $destino)) {
+            $nomeImagem = $novoNome; // Atualiza a variável com o novo nome
+            
+            // Opcional: Deletar a imagem antiga do servidor para economizar espaço
+            if ($atual['imagem'] && file_exists(__DIR__ . '/../../public/uploads/' . $atual['imagem'])) {
+                unlink(__DIR__ . '/../../public/uploads/' . $atual['imagem']);
+            }
+        }
+    }
+
+    // Update SQL
+    try {
+        $sql = "UPDATE passeios SET titulo=:titulo, descricao=:descricao, preco=:preco, imagem=:imagem, ativo=:ativo WHERE id=:id";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':titulo', $titulo);
+        $stmt->bindValue(':descricao', $descricao);
+        $stmt->bindValue(':preco', $preco);
+        $stmt->bindValue(':imagem', $nomeImagem);
+        $stmt->bindValue(':ativo', $ativo);
+        $stmt->bindValue(':id', $id);
+        $stmt->execute();
+
+        header("Location: dashboard.php?msg=atualizado");
+        exit;
+
+    } catch (PDOException $e) {
+        die("Erro ao atualizar: " . $e->getMessage());
+    }
+}
+
+// ---------------------------------------------------------
+// CENÁRIO B: Carregar a Tela (GET - Preencher formulário)
+// ---------------------------------------------------------
+try {
+    $stmt = $pdo->prepare("SELECT * FROM passeios WHERE id = :id");
+    $stmt->bindValue(':id', $id);
+    $stmt->execute();
+    $passeio = $stmt->fetch();
+
+    if (!$passeio) {
+        die("Passeio não encontrado.");
+    }
+
+    // Carrega a view passando os dados
+    require_once __DIR__ . '/../../views/admin/editar-passeio.php';
+
+} catch (PDOException $e) {
+    die("Erro ao buscar dados.");
+}
+?>
+--- FIM ARQUIVO: public\admin\editar-passeio.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\admin\galeria.php ---
+<?php
+session_start();
+require_once __DIR__ . '/../../config/database.php';
+
+// 1. SEGURANÇA: Apenas admin logado
+if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true) {
+    header("Location: ../login.php");
+    exit;
+}
+
+// 2. VALIDAÇÃO: Precisamos saber DE QUAL passeio estamos falando
+if (!isset($_GET['id'])) {
+    header("Location: dashboard.php");
+    exit;
+}
+
+$passeio_id = (int)$_GET['id'];
+
+// Busca info do passeio só para mostrar o título na tela
+$stmt = $pdo->prepare("SELECT titulo FROM passeios WHERE id = :id");
+$stmt->execute([':id' => $passeio_id]);
+$passeio = $stmt->fetch();
+
+if (!$passeio) {
+    die("Passeio não encontrado.");
+}
+
+// =========================================================
+// LÓGICA DE UPLOAD (POST)
+// =========================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fotos'])) {
+    
+    $fotos = $_FILES['fotos'];
+    $pastaDestino = __DIR__ . '/../../public/uploads/';
+    
+    // O PHP entrega o array de arquivos "invertido" quando é múltiplo.
+    // Precisamos iterar pelos índices numéricos.
+    for ($i = 0; $i < count($fotos['name']); $i++) {
+        
+        // Verifica se houve erro neste arquivo específico e se tem nome
+        if ($fotos['error'][$i] === 0 && !empty($fotos['name'][$i])) {
+            
+            $extensao = pathinfo($fotos['name'][$i], PATHINFO_EXTENSION);
+            $novoNome = uniqid() . '-' . $i . "." . $extensao; // Adicionei o indice $i para evitar colisão no mesmo segundo
+            
+            if (move_uploaded_file($fotos['tmp_name'][$i], $pastaDestino . $novoNome)) {
+                
+                // Sucesso no upload? Salva no banco vinculando ao ID do passeio
+                $stmt = $pdo->prepare("INSERT INTO fotos_passeio (passeio_id, imagem) VALUES (:pid, :img)");
+                $stmt->execute([
+                    ':pid' => $passeio_id,
+                    ':img' => $novoNome
+                ]);
+            }
+        }
+    }
+    
+    // Refresh na página para mostrar as fotos novas
+    header("Location: galeria.php?id=$passeio_id&msg=sucesso");
+    exit;
+}
+
+// =========================================================
+// LÓGICA DE DELETAR FOTO (GET com acao=deletar)
+// =========================================================
+if (isset($_GET['acao']) && $_GET['acao'] == 'deletar' && isset($_GET['foto_id'])) {
+    
+    $foto_id = (int)$_GET['foto_id'];
+    
+    // 1. Buscar o nome do arquivo para deletar da pasta
+    $stmt = $pdo->prepare("SELECT imagem FROM fotos_passeio WHERE id = :fid AND passeio_id = :pid");
+    $stmt->execute([':fid' => $foto_id, ':pid' => $passeio_id]);
+    $fotoAlvo = $stmt->fetch();
+    
+    if ($fotoAlvo) {
+        // Deleta arquivo físico
+        $caminho = __DIR__ . '/../../public/uploads/' . $fotoAlvo['imagem'];
+        if (file_exists($caminho)) {
+            unlink($caminho);
+        }
+        
+        // Deleta do banco
+        $stmt = $pdo->prepare("DELETE FROM fotos_passeio WHERE id = :fid");
+        $stmt->execute([':fid' => $foto_id]);
+    }
+    
+    header("Location: galeria.php?id=$passeio_id&msg=deletado");
+    exit;
+}
+
+// =========================================================
+// BUSCAR FOTOS EXISTENTES PARA EXIBIR
+// =========================================================
+$stmt = $pdo->prepare("SELECT * FROM fotos_passeio WHERE passeio_id = :id ORDER BY id DESC");
+$stmt->execute([':id' => $passeio_id]);
+$galeria = $stmt->fetchAll();
+
+?>
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Gerenciar Galeria - <?= htmlspecialchars($passeio['titulo']) ?></title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        .foto-container {
+            position: relative;
+            height: 200px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #ddd;
+        }
+        .foto-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .btn-delete {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(220, 53, 69, 0.9);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .foto-container:hover .btn-delete {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+    <div class="container my-5">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="mb-0">Galeria de Fotos</h2>
+                <p class="text-muted">Passeio: <strong><?= htmlspecialchars($passeio['titulo']) ?></strong></p>
+            </div>
+            <div>
+                <a href="../detalhes.php?id=<?= $passeio_id ?>" class="btn btn-outline-primary" target="_blank">
+                    <i class="bi bi-eye"></i> Ver no Site
+                </a>
+                <a href="dashboard.php" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Voltar
+                </a>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-5">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Adicionar Novas Fotos</h5>
+                
+                <form method="POST" enctype="multipart/form-data" class="row align-items-end">
+                    <div class="col-md-9">
+                        <label class="form-label">Selecione uma ou mais imagens</label>
+                        <input type="file" name="fotos[]" class="form-control" multiple accept="image/*" required>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-cloud-upload"></i> Enviar Fotos
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <h5 class="mb-3">Fotos Cadastradas (<?= count($galeria) ?>)</h5>
+        
+        <?php if (count($galeria) > 0): ?>
+            <div class="row">
+                <?php foreach ($galeria as $foto): ?>
+                    <div class="col-6 col-md-3 mb-4">
+                        <div class="foto-container shadow-sm">
+                            <img src="../../public/uploads/<?= htmlspecialchars($foto['imagem']) ?>" alt="Foto">
+                            
+                            <a href="galeria.php?id=<?= $passeio_id ?>&acao=deletar&foto_id=<?= $foto['id'] ?>" 
+                               class="btn-delete" 
+                               onclick="return confirm('Tem certeza que deseja apagar essa foto?');"
+                               title="Excluir">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <div class="alert alert-info">
+                Nenhuma foto extra cadastrada neste álbum ainda. A foto de capa é gerenciada na edição principal.
+            </div>
+        <?php endif; ?>
+
+    </div>
+
+</body>
+</html>
+--- FIM ARQUIVO: public\admin\galeria.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\css\style.css ---
+/* =========================================
+   Variaveis Globais e Resets
+   ========================================= */
+:root {
+    --cor-primaria: #0d6efd;
+    --cor-secundaria: #6c757d;
+    --cor-marine: #12263bff; /* Sua cor personalizada */
+    --cor-zap: #25D366;
+    --cor-zap-hover: #128C7E;
+    --cor-warning: #ffc107;
+}
+
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* =========================================
+   Navbar & Identidade
+   ========================================= */
+.bg-navbar-marine {
+    background-color: var(--cor-marine);
+}
+
+.logo-empresa {
+    height: 60px;
+    width: auto;
+    display: flex;
+    align-items: center;
+}
+
+.logo-empresa img {
+    max-height: 100%;
+    width: auto;
+    margin-right: 15px;
+}
+
+/* =========================================
+   Hero Section (Banner Principal)
+   ========================================= */
+.hero-section {
+    background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('../../models/img/van-banner.jpg') no-repeat center center;
+    background-size: cover;
+    background-position: center;
+    color: white;
+    padding: 100px 0;
+    text-align: center;
+}
+
+/* =========================================
+   Cards de Passeios
+   ========================================= */
+.card {
+    border: none;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 1rem 3rem rgba(0,0,0,.175) !important;
+}
+
+/* Define tamanho padrão para imagens dos cards */
+.card-img-top {
+    width: 100%;
+    height: 330px; 
+    object-fit: cover;
+}
+
+/* Faz o card ser clicável mantendo botões funcionais */
+.card-action-layer {
+    position: relative;
+    z-index: 2;
+}
+
+/* =========================================
+   Botões Específicos
+   ========================================= */
+.whatsapp-btn {
+    background-color: var(--cor-zap);
+    color: white;
+    border: none;
+    transition: all 0.3s;
+}
+
+.whatsapp-btn:hover {
+    background-color: var(--cor-zap-hover);
+    color: white;
+    transform: scale(1.05);
+}
+
+/* Botão Flutuante de Admin (Lápis) */
+.admin-edit-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: transform 0.2s;
+    text-decoration: none;
+    color: var(--cor-warning);
+}
+
+.admin-edit-btn:hover {
+    transform: scale(1.1);
+    background-color: var(--cor-warning);
+    color: black;
+}
+
+/* =========================================
+   Carrossel (Detalhes)
+   ========================================= */
+.carousel-custom-height {
+    height: 500px;
+}
+
+.carousel-custom-height img {
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Ícones de navegação do carrossel mais visíveis */
+.carousel-control-icon-bg {
+    background-color: rgba(0,0,0,0.5);
+    border-radius: 50%;
+    padding: 20px;
+    background-size: 50% 50%;
+}
+
+/* =========================================
+   Rodapé (Footer)
+   ========================================= */
+.footer-link {
+    color: #adb5bd;
+    text-decoration: none;
+    transition: color 0.3s ease, padding-left 0.3s ease;
+}
+
+.footer-link:hover {
+    color: #fff;
+    padding-left: 5px;
+}
+
+.social-icon {
+    font-size: 1.5rem;
+    margin-right: 15px;
+    color: #fff;
+    transition: transform 0.3s, color 0.3s;
+}
+
+.social-icon:hover {
+    transform: translateY(-3px);
+    color: var(--cor-zap);
+}
+
+/* =========================================
+   Estilos Específicos da Página de Detalhes
+   ========================================= */
+
+/* Define a altura fixa do carrossel */
+.carousel-custom-height {
+    height: 500px;
+    width: 100%;
+    background-color: #eee; /* Cor de fundo enquanto carrega */
+}
+
+/* A mágica da imagem */
+.carousel-custom-height img {
+    width: 100%;
+    height: 100%;       /* Força a imagem a ocupar toda a altura da div pai */
+    object-fit: cover;  /* Corta as bordas excedentes sem distorcer a imagem */
+    object-position: center; /* Garante que o centro da foto apareça */
+}
+
+/* Responsividade: No celular, diminuímos a altura para não ocupar a tela toda */
+@media (max-width: 768px) {
+    .carousel-custom-height {
+        height: 300px;
+    }
+}
+--- FIM ARQUIVO: public\css\style.css ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: public\js\main.js ---
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // 1. Inicializa Tooltips do Bootstrap (opcional, mas bom para UX)
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    });
+
+    // 2. Confirmação global para botões de deletar
+    // Procura qualquer link que tenha a classe 'confirm-delete'
+    const deleteLinks = document.querySelectorAll('.confirm-delete');
+    deleteLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            if (!confirm('Tem certeza que deseja realizar esta exclusão? Esta ação não pode ser desfeita.')) {
+                e.preventDefault();
+            }
+        });
+    });
+
+});
+--- FIM ARQUIVO: public\js\main.js ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: views\admin\configuracoes.php ---
+<?php
+session_start();
+require_once __DIR__ . '/../../config/database.php';
+
+// 1. Segurança
+if (!isset($_SESSION['logado'])) {
+    header("Location: ../login.php");
+    exit;
+}
+
+// 2. Processar Atualização (POST)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $sql = "UPDATE site_config SET 
+                nome_site = :nome,
+                whatsapp = :zap,
+                instagram = :insta,
+                facebook = :face,
+                email_contato = :email,
+                endereco = :end
+                WHERE id = 1"; // Sempre atualiza o ID 1
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':nome', $_POST['nome_site']);
+        // Remove caracteres não numéricos do zap para salvar limpo
+        $zapLimpo = preg_replace('/[^0-9]/', '', $_POST['whatsapp']);
+        $stmt->bindValue(':zap', $zapLimpo);
+        
+        $stmt->bindValue(':insta', $_POST['instagram']);
+        $stmt->bindValue(':face', $_POST['facebook']);
+        $stmt->bindValue(':email', $_POST['email_contato']);
+        $stmt->bindValue(':end', $_POST['endereco']);
+        $stmt->execute();
+
+        $msg = "Configurações atualizadas com sucesso!";
+        
+    } catch (PDOException $e) {
+        $erro = "Erro ao atualizar: " . $e->getMessage();
+    }
+}
+
+// 3. Buscar Configurações Atuais
+$stmt = $pdo->query("SELECT * FROM site_config WHERE id = 1");
+$config = $stmt->fetch();
+?>
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Configurações do Site</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+</head>
+<body class="bg-light">
+
+    <nav class="navbar navbar-dark bg-primary mb-4">
+        <div class="container">
+            <span class="navbar-brand"><i class="bi bi-gear"></i> Configurações Gerais</span>
+            <a href="dashboard.php" class="btn btn-sm btn-light text-primary fw-bold">Voltar ao Painel</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="card shadow-sm" style="max-width: 800px; margin: 0 auto;">
+            <div class="card-body">
+                
+                <?php if(isset($msg)): ?>
+                    <div class="alert alert-success"><?= $msg ?></div>
+                <?php endif; ?>
+
+                <form method="POST">
+                    <h5 class="mb-3 border-bottom pb-2">Informações Básicas</h5>
+                    <div class="mb-3">
+                        <label class="form-label">Nome do Site (SEO)</label>
+                        <input type="text" name="nome_site" class="form-control" value="<?= htmlspecialchars($config['nome_site']) ?>">
+                    </div>
+
+                    <h5 class="mb-3 border-bottom pb-2 mt-4">Contatos & Redes Sociais</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><i class="bi bi-whatsapp text-success"></i> WhatsApp (com DDD)</label>
+                            <input type="text" name="whatsapp" class="form-control" value="<?= htmlspecialchars($config['whatsapp']) ?>" placeholder="5582999...">
+                            <div class="form-text">Apenas números (Ex: 558299998888)</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><i class="bi bi-envelope"></i> E-mail de Contato</label>
+                            <input type="email" name="email_contato" class="form-control" value="<?= htmlspecialchars($config['email_contato']) ?>">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><i class="bi bi-instagram text-danger"></i> Link do Instagram</label>
+                            <input type="text" name="instagram" class="form-control" value="<?= htmlspecialchars($config['instagram']) ?>">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label"><i class="bi bi-facebook text-primary"></i> Link do Facebook</label>
+                            <input type="text" name="facebook" class="form-control" value="<?= htmlspecialchars($config['facebook']) ?>">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Endereço (Rodapé)</label>
+                        <textarea name="endereco" class="form-control" rows="2"><?= htmlspecialchars($config['endereco']) ?></textarea>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">Salvar Configurações</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
+--- FIM ARQUIVO: views\admin\configuracoes.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: views\admin\criar-passeio.php ---
+<head>
+    <meta charset="UTF-8">
+    <title>Novo Passeio - Turismo Vans</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+    
+    <script>
+      tinymce.init({
+        selector: 'textarea[name="descricao"]', // Seleciona o campo descrição
+        height: 300,
+        menubar: false,
+        plugins: 'lists link',
+        toolbar: 'undo redo | formatselect | bold italic | alignleft aligncenter alignright | bullist numlist',
+        branding: false // Remove a logo do TinyMCE
+      });
+    </script>
+</head>
+<body class="bg-light">
+    <div class="container mt-5">
+        <div class="card shadow-sm" style="max-width: 600px; margin: 0 auto;">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">Cadastrar Novo Passeio</h4>
+            </div>
+            <div class="card-body">
+                <form action="criar-passeio.php" method="POST" enctype="multipart/form-data">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Título do Passeio</label>
+                        <input type="text" name="titulo" class="form-control" required placeholder="Ex: Praia do Gunga">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Descrição</label>
+                        <textarea name="descricao" class="form-control" rows="4" required placeholder="Detalhes do roteiro..."></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Preço (R$)</label>
+                            <input type="number" step="0.01" name="preco" class="form-control" required placeholder="0.00">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Foto de Capa</label>
+                            <input type="file" name="imagem" class="form-control" accept="image/*" required>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success">Salvar Passeio</button>
+                        <a href="dashboard.php" class="btn btn-outline-secondary">Cancelar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+--- FIM ARQUIVO: views\admin\criar-passeio.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: views\admin\dashboard.php ---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Painel Admin - Turismo Vans</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+</head>
+<body class="bg-light">
+
+    <nav class="navbar navbar-dark bg-primary mb-4">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">
+                <i class="bi bi-speedometer2"></i> Painel Administrativo
+            </span>
+            <div class="d-flex align-items-center text-white">
+                <span class="me-3">Olá, <?= htmlspecialchars($_SESSION['user_nome'] ?? 'Admin') ?></span>
+                <a href="../logout.php" class="btn btn-sm btn-light text-primary fw-bold">Sair</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3>Gerenciar Passeios</h3>
+            <a href="criar-passeio.php" class="btn btn-success">
+                <i class="bi bi-plus-circle"></i> Novo Passeio
+            </a>
+        </div>
+
+        <div class="container">
+        
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card text-white bg-primary mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Total de Passeios</h5>
+                        <p class="card-text display-4 fw-bold"><?= $totalPasseios ?></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-white bg-success mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Ativos no Site</h5>
+                        <p class="card-text display-4 fw-bold"><?= $totalAtivos ?></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-white bg-secondary mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Ocultos / Inativos</h5>
+                        <p class="card-text display-4 fw-bold"><?= $totalInativos ?></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+
+        <div class="card shadow-sm">
+            <div class="card-body p-0">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Foto</th>
+                            <th>Título</th>
+                            <th>Preço</th>
+                            <th>Status</th>
+                            <th class="text-end">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (!empty($passeios)): ?>
+                            <?php foreach ($passeios as $p): ?>
+                            <tr>
+                                <td><?= $p['id'] ?></td>
+                                <td>
+                                    <?php if($p['imagem']): ?>
+                                        <img src="../../public/uploads/<?= htmlspecialchars($p['imagem']) ?>" alt="img" width="50" height="40" style="object-fit:cover;">
+                                    <?php else: ?>
+                                        <i class="bi bi-image text-muted"></i>
+                                    <?php endif; ?>
+                                    $totalPasseios = count($passeios);
+                                    $totalAtivos   = 0;
+                                    $totalInativos = 0;
+
+                                    foreach ($passeios as $p) {
+                                        if ($p['ativo'] == 1) $totalAtivos++;
+                                        else $totalInativos++;
+                                    }
+                                </td>
+                                <td><?= htmlspecialchars($p['titulo']) ?></td>
+                                <td>R$ <?= number_format($p['preco'], 2, ',', '.') ?></td>
+                                <td>
+                                    <?= $p['ativo'] ? '<span class="badge bg-success">Ativo</span>' : '<span class="badge bg-secondary">Inativo</span>' ?>
+                                </td>
+                                <td class="text-end">
+                                    <a href="editar-passeio.php?id=<?= $p['id'] ?>" class="btn btn-sm btn-warning" title="Editar">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+
+                                    <a href="deletar-passeio.php?id=<?= $p['id'] ?>" 
+                                    class="btn btn-sm btn-danger" 
+                                    onclick="return confirm('Tem certeza que deseja excluir este passeio?');" 
+                                    title="Excluir">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="6" class="text-center py-4">Nenhum passeio encontrado.</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+--- FIM ARQUIVO: views\admin\dashboard.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: views\admin\editar-passeio.php ---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Editar Passeio - Turismo Vans</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+    <script>
+      tinymce.init({
+        selector: 'textarea[name="descricao"]',
+        height: 300,
+        menubar: false,
+        plugins: 'lists link',
+        toolbar: 'undo redo | formatselect | bold italic | alignleft aligncenter alignright | bullist numlist',
+        branding: false
+      });
+    </script>
+</head>
+<body class="bg-light">
+    <div class="container mt-5">
+        <div class="card shadow-sm" style="max-width: 600px; margin: 0 auto;">
+            <div class="card-header bg-warning text-dark">
+                <h4 class="mb-0">Editar Passeio #<?= $passeio['id'] ?></h4>
+            </div>
+            <div class="card-body">
+                
+                <form action="editar-passeio.php?id=<?= $passeio['id'] ?>" method="POST" enctype="multipart/form-data">
+                    
+                    <input type="hidden" name="id" value="<?= $passeio['id'] ?>">
+
+                    <div class="mb-3">
+                        <label class="form-label">Título</label>
+                        <input type="text" name="titulo" class="form-control" value="<?= htmlspecialchars($passeio['titulo']) ?>" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Descrição</label>
+                        <textarea name="descricao" class="form-control" rows="4" required><?= htmlspecialchars($passeio['descricao']) ?></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Preço (R$)</label>
+                        <input type="number" step="0.01" name="preco" class="form-control" value="<?= $passeio['preco'] ?>" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Imagem Atual</label><br>
+                        <?php if($passeio['imagem']): ?>
+                            <img src="../../public/uploads/<?= htmlspecialchars($passeio['imagem']) ?>" width="150" class="img-thumbnail mb-2">
+                        <?php endif; ?>
+                        
+                        <label class="form-label d-block text-muted small">Trocar Imagem (Deixe vazio para manter a atual)</label>
+                        <input type="file" name="imagem" class="form-control" accept="image/*">
+                    </div>
+
+                    <div class="form-check form-switch mb-4">
+                        <input class="form-check-input" type="checkbox" id="ativo" name="ativo" value="1" <?= $passeio['ativo'] ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="ativo">Passeio Ativo (Visível no site)</label>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-warning">Atualizar Dados</button>
+                        <a href="dashboard.php" class="btn btn-outline-secondary">Cancelar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+--- FIM ARQUIVO: views\admin\editar-passeio.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: views\admin\login.php ---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Administrativo - Turismo Vans</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        .login-card {
+            max-width: 400px;
+            width: 100%;
+            border: none;
+            border-radius: 15px;
+        }
+        .brand-logo {
+            font-size: 3rem;
+            color: #0d6efd;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card login-card shadow-lg p-4">
+        <div class="card-body text-center">
+            <div class="brand-logo mb-3">
+                <i class="bi bi-shield-lock"></i>
+            </div>
+            <h3 class="mb-4 fw-bold">Painel Admin</h3>
+            
+            <?php if (isset($_GET['erro'])): ?>
+                <div class="alert alert-danger text-start text-sm">
+                    ⚠️ Usuário ou senha incorretos.
+                </div>
+            <?php endif; ?>
+
+            <form action="auth.php" method="POST">
+                <div class="form-floating mb-3">
+                    <input type="email" class="form-control" id="email" name="email" placeholder="nome@exemplo.com" required>
+                    <label for="email">E-mail</label>
+                </div>
+                <div class="form-floating mb-3">
+                    <input type="password" class="form-control" id="senha" name="senha" placeholder="Senha" required>
+                    <label for="senha">Senha</label>
+                </div>
+                <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">Entrar</button>
+            </form>
+            
+            <div class="mt-3 text-muted">
+                <small>Acesso restrito à equipe.</small>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
+--- FIM ARQUIVO: views\admin\login.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: views\partials\footer.php ---
+    <footer class="bg-navbar-marine text-white pt-5 pb-3 mt-auto">
+        <div class="container">
+            <div class="row">
+                
+                <div class="col-md-4 mb-4">
+                    <h5 class="text-uppercase fw-bold mb-3">
+                        <i class="bi bi-bus-front-fill me-2"></i> É de Maceió
+                    </h5>
+                    <p class="text-white-50 small">
+                        Especialistas em turismo receptivo e transporte executivo em Alagoas. 
+                        Conforto, segurança e pontualidade para você curtir o paraíso.
+                    </p>
+                    <div class="mt-3">
+                        <a href="#" class="social-icon"><i class="bi bi-instagram"></i></a>
+                        <a href="#" class="social-icon"><i class="bi bi-facebook"></i></a>
+                        <a href="https://wa.me/<?= $siteConfig['whatsapp'] ?>" class="social-icon"><i class="bi bi-whatsapp"></i></a>
+                    </div>
+                </div>
+
+                <div class="col-md-4 mb-4">
+                    <h5 class="text-uppercase fw-bold mb-3">Navegação</h5>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="#" class="footer-link">Início</a></li>
+                        <li class="mb-2"><a href="#passeios" class="footer-link">Nossos Passeios</a></li>
+                        <li class="mb-2"><a href="sobre.php" class="footer-link">Sobre a Agência</a></li>
+                        <li class="mb-2"><a href="#" class="footer-link">Política de Privacidade</a></li>
+                    </ul>
+                </div>
+
+                <div class="col-md-4 mb-4">
+                    <h5 class="text-uppercase fw-bold mb-3">Fale Conosco</h5>
+                    <ul class="list-unstyled text-white-50">
+                        <li class="mb-3">
+                            <i class="bi bi-geo-alt-fill me-2 text-warning"></i>
+                            Maceió, Alagoas - Brasil
+                        </li>
+                        <li class="mb-3">
+                            <i class="bi bi-envelope-fill me-2 text-warning"></i>
+                            contato@edemaceio.com.br
+                        </li>
+                        <li class="mb-3">
+                            <i class="bi bi-whatsapp me-2 text-warning"></i>
+                            <?= htmlspecialchars($siteConfig['whatsapp']) ?>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <hr class="border-secondary my-4">
+
+            <div class="row align-items-center">
+                <div class="col-md-6 text-center text-md-start">
+                    <small class="text-white-50">
+                        &copy; <?= date('Y') ?> É de Maceió Turismo. Todos os direitos reservados.
+                    </small>
+                </div>
+                <div class="col-md-6 text-center text-md-end">
+                    <small class="text-white-50">
+                        Desenvolvido por <strong>Bruno Rafael</strong>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script src="<?= isset($basePath) ? $basePath : '' ?>js/main.js"></script>
+</html>
+--- FIM ARQUIVO: views\partials\footer.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: views\partials\header.php ---
+<?php
+if (session_status() === PHP_SESSION_NONE) session_start();
+$isAdmin = isset($_SESSION['logado']) && $_SESSION['logado'] === true;
+
+// Lógica de Caminho para Admin vs Site
+$isInAdmin = strpos($_SERVER['REQUEST_URI'], '/admin/') !== false;
+$basePath = $isInAdmin ? '../' : ''; 
+
+// --- LÓGICA DE SEO (OPEN GRAPH) ---
+// Define valores padrão caso a página (Controller) não tenha definido
+$seoTitle = $seoTitle ?? $siteConfig['nome_site'];
+$seoDesc  = $seoDesc  ?? 'Especialistas em turismo receptivo e transporte executivo em Alagoas. Conforto, segurança e pontualidade.';
+// Nota: Em localhost, o WhatsApp NÃO mostra a imagem. Só funciona quando subir para um site real (.com.br)
+$seoImage = $seoImage ?? 'http://' . $_SERVER['HTTP_HOST'] . '/edemaceio/models/img/logo.png'; 
+$seoUrl   = "http://" . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <title><?= htmlspecialchars($seoTitle) ?></title>
+    <meta name="description" content="<?= htmlspecialchars($seoDesc) ?>">
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="<?= $seoUrl ?>">
+    <meta property="og:title" content="<?= htmlspecialchars($seoTitle) ?>">
+    <meta property="og:description" content="<?= htmlspecialchars($seoDesc) ?>">
+    <meta property="og:image" content="<?= $seoImage ?>">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<?= htmlspecialchars($seoTitle) ?>">
+    <meta name="twitter:description" content="<?= htmlspecialchars($seoDesc) ?>">
+    <meta name="twitter:image" content="<?= $seoImage ?>">
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <link rel="stylesheet" href="<?= $basePath ?>css/style.css">
+</head>
+<body>
+
+    <?php if ($isAdmin): ?>
+        <div class="bg-danger text-white py-2 px-3 d-flex justify-content-between align-items-center sticky-top" style="z-index: 1050; border-bottom: 2px solid #b02a37;">
+            <small class="fw-bold"><i class="bi bi-shield-lock-fill"></i> MODO ADMIN</small>
+            <div>
+                <a href="<?= $basePath ?>admin/dashboard.php" class="btn btn-sm btn-light text-danger fw-bold me-2">Painel</a>
+                <a href="<?= $basePath ?>admin/criar-passeio.php" class="btn btn-sm btn-outline-light fw-bold">Novo</a>
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-navbar-marine">
+        <div class="container">
+            <div class="logo-empresa">
+                <img src="<?= $basePath ?>../models/img/logo.png" alt="Logo">
+            </div>
+            <a class="navbar-brand" href="<?= $basePath ?>index">É de Maceió</a>
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="<?= $basePath ?>index">Passeios</a></li>
+                    <li class="nav-item"><a class="nav-link" href="<?= $basePath ?>sobre">Sobre Nós</a></li>
+                    <li class="nav-item"><a class="nav-link" href="https://wa.me/5582999999999">Contato</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+--- FIM ARQUIVO: views\partials\header.php ---
+
+----------------------------------------
+
+--- INICIO ARQUIVO: views\site\detalhes.php ---
+<?php require_once __DIR__ . '/../partials/header.php'; ?>
+
+<div class="bg-light py-3">
+    <div class="container">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="index.php">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page"><?= htmlspecialchars($passeio['titulo']) ?></li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="container my-5">
+    <div class="row">
+        
+        <div class="col-lg-8">
+            
+            <h1 class="fw-bold mb-4"><?= htmlspecialchars($passeio['titulo']) ?></h1>
+
+            <?php if (isset($_SESSION['logado']) && $_SESSION['logado'] === true): ?>
+                <div class="alert alert-warning d-flex align-items-center justify-content-between mb-4 shadow-sm" role="alert">
+                    <div>
+                        <i class="bi bi-gear-fill me-2"></i> <strong>Gerenciar este Passeio:</strong>
+                    </div>
+                    <div>
+                        <a href="admin/editar-passeio.php?id=<?= $passeio['id'] ?>" class="btn btn-sm btn-dark me-2">
+                            <i class="bi bi-pencil"></i> Editar Texto/Preço
+                        </a>
+                        
+                        <a href="admin/galeria.php?id=<?= $passeio['id'] ?>" class="btn btn-sm btn-primary">
+                            <i class="bi bi-images"></i> Gerenciar Fotos (Album)
+                        </a>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <div id="carouselPasseio" class="carousel slide mb-5 shadow rounded overflow-hidden" data-bs-ride="carousel" data-bs-interval="3000">
+                
+                <div class="carousel-inner carousel-custom-height">
+                    
+                    <div class="carousel-item active">
+                        <?php $imgPrincipal = $passeio['imagem'] ? 'uploads/' . $passeio['imagem'] : 'https://placehold.co/800x500?text=Capa'; ?>
+                        <img src="<?= $imgPrincipal ?>" class="d-block" alt="Capa">
+                    </div>
+
+                    <?php if (!empty($galeria)): ?>
+                        <?php foreach ($galeria as $foto): ?>
+                            <div class="carousel-item">
+                                <img src="uploads/<?= htmlspecialchars($foto) ?>" class="d-block" alt="Foto Extra">
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+                
+                <button class="carousel-control-prev" type="button" data-bs-target="#carouselPasseio" data-bs-slide="prev">
+                    <span class="carousel-control-prev-icon" aria-hidden="true" style="background-color: rgba(0,0,0,0.5); border-radius: 50%; padding: 20px;"></span>
+                    <span class="visually-hidden">Anterior</span>
+                </button>
+                <button class="carousel-control-next" type="button" data-bs-target="#carouselPasseio" data-bs-slide="next">
+                    <span class="carousel-control-next-icon" aria-hidden="true" style="background-color: rgba(0,0,0,0.5); border-radius: 50%; padding: 20px;"></span>
+                    <span class="visually-hidden">Próximo</span>
+                </button>
+            </div>
+
+            <div class="mb-5">
+                <h3 class="fw-bold mb-3"><i class="bi bi-file-text me-2"></i>Sobre o Passeio</h3>
+                <div class="text-muted" style="line-height: 1.8; font-size: 1.1rem;">
+                    <div class="descricao-rica">
+                        <?= html_entity_decode($passeio['descricao']) ?>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card bg-light border-0 p-4 mb-4">
+                <h4 class="fw-bold mb-3">O que este passeio oferece?</h4>
+                <div class="row">
+                    <div class="col-md-6 mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i> Transporte Ida e Volta</div>
+                    <div class="col-md-6 mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i> Guia Credenciado</div>
+                    <div class="col-md-6 mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i> Seguro Passageiro</div>
+                    <div class="col-md-6 mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i> Ar-condicionado</div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow border-0 position-sticky" style="top: 20px; z-index: 1;">
+                <div class="card-body p-4">
+                    <p class="text-muted mb-1">Preço por pessoa</p>
+                    <h2 class="text-primary fw-bold mb-4">R$ <?= number_format($passeio['preco'], 2, ',', '.') ?></h2>
+
+                    <div class="d-grid gap-2">
+                        <?php 
+                            $msg = "Olá! Gostaria de reservar o passeio *" . $passeio['titulo'] . "*. Poderia me passar a disponibilidade?";
+                            $linkZap = "https://wa.me/5582999999999?text=" . urlencode($msg);
+                        ?>
+                        <a href="<?= $linkZap ?>" target="_blank" class="btn whatsapp-btn w-100 btn-lg fw-bold">
+                            <i class="bi bi-whatsapp"></i> Reservar Agora
+                        </a>
+                        <button class="btn btn-outline-primary">
+                            <i class="bi bi-share"></i> Compartilhar
+                        </button>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="bi bi-shield-check fs-4 text-primary me-3"></i>
+                        <div>
+                            <small class="fw-bold d-block">Reserva Segura</small>
+                            <small class="text-muted">Pagamento direto com a agência</small>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-calendar-check fs-4 text-primary me-3"></i>
+                        <div>
+                            <small class="fw-bold d-block">Cancelamento Grátis</small>
+                            <small class="text-muted">Até 24h antes do passeio</small>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/../partials/footer.php'; ?>
+--- FIM ARQUIVO: views\site\detalhes.php ---
+
+----------------------------------------
+
